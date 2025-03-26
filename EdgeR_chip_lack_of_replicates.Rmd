@@ -1,0 +1,308 @@
+---
+title: "EdgeR_chip_lack_of_replicates"
+author: "Morgan Morrow"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+# Load required libraries  
+library(readxl)       # For reading Excel files  
+library(DESeq2)       # For differential expression analysis  
+  
+# Read the data from the Excel file  
+# Adjust the file path if needed.  
+excel_file <- "/Users/morganmorrow/Downloads/deseq2/Salmonella\ Chip\ 1.xlsx"  
+df <- read_excel(excel_file, sheet = "Sheet1")  
+  
+# Print the first few rows to inspect the data  
+print(head(df))  
+  
+# Assume that:  
+# - The first column ("ID") contains gene names/IDs.  
+# - The column named "UI Stretch" contains counts for UI Stretch condition.  
+# - The column named "UI Flow" contains counts for UI Flow condition.  
+# Convert the relevant columns to a matrix of counts.  
+# If needed, adjust the column names based on your actual data.  
+countData <- as.matrix(df[, c("UI Stretch", "UI Flow")])  
+rownames(countData) <- df$ID  
+  
+# Create a dataframe to define sample conditions.  
+# Here, we define two conditions: UI Stretch and UI Flow.  
+# This script assumes that each column is one replicate.  
+colData <- data.frame(  
+  row.names = colnames(countData),  
+  condition = factor(c("UI_Stretch", "UI_Flow"))  
+)  
+  
+# Create the DESeqDataSet object  
+dds <- DESeqDataSetFromMatrix(countData = countData, colData = colData, design = ~ condition)  
+  
+# Prefiltering: Remove rows with very few counts to improve analysis (optional)  
+dds <- dds[rowSums(counts(dds)) > 1, ]  
+  
+# Run the differential expression analysis  
+dds <- DESeq(dds)  
+  
+# Get the results contrasting UI_Flow with UI_Stretch  
+res <- results(dds, contrast = c("condition", "UI_Flow", "UI_Stretch"))  
+  
+# Order results by adjusted p-value (smallest first)  
+resOrdered <- res[order(res$padj),]  
+  
+# Show a summary of the results  
+print(summary(resOrdered))  
+  
+# Optionally, view a table of the top results  
+topResults <- as.data.frame(head(resOrdered, 10))  
+print(topResults)  
+  
+# Save the results to a CSV file  
+write.csv(as.data.frame(resOrdered), file = "DESeq2_results_UIStretch_vs_UIFlow.csv", row.names = TRUE)  
+  
+cat("DESeq2 analysis complete. Results saved as 'DESeq2_results_UIStretch_vs_UIFlow.csv'\n")  
+
+
+```
+```{r UI Stretch vs UI flow}
+# Load required libraries
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager", repos="https://cran.rstudio.com/", dependencies = FALSE)
+
+if (!requireNamespace("edgeR", quietly = TRUE))
+  BiocManager::install("edgeR")
+
+if (!requireNamespace("readxl", quietly = TRUE))
+  install.packages("readxl", repos="https://cran.rstudio.com/", dependencies = FALSE)
+
+library(edgeR)
+library(readxl)
+
+# Read the data from the Excel file
+excel_file <- "/Users/morganmorrow/Downloads/deseq2/Salmonella\ Chip\ 1.xlsx"
+# First, let's check what sheets are available in the Excel file
+sheet_names <- excel_sheets(excel_file)
+print(sheet_names)
+
+# Read the data from Sheet1
+data <- read_excel(excel_file, sheet = "Sheet1")
+
+# Check the structure of the data
+str(data)
+
+# Display the first few rows
+head(data)
+
+# Fix non-unique gene identifiers by making them unique
+unique_ids <- make.unique(as.character(data$ID))
+data$ID <- unique_ids
+
+# Extract count data for UI Stretch and UI Flow
+# Convert to matrix form (assuming these are in columns named exactly 'UI Stretch' and 'UI Flow')
+countData <- as.matrix(data[, c("UI Stretch", "UI Flow")])
+rownames(countData) <- data$ID
+
+# Create group factor for the two conditions with one sample each
+group <- factor(c("UI_Stretch", "UI_Flow"))
+
+# Create DGEList object
+dge <- DGEList(counts = countData, group = group)
+
+# Set a prior common dispersion estimate, e.g., 0.1
+prior_dispersion <- 0.1
+# Assign the dispersion to each gene (manually setting a fixed dispersion)
+dge$common.dispersion <- prior_dispersion
+dge$tagwise.dispersion <- rep(prior_dispersion, nrow(dge))
+
+# Create design matrix
+design <- model.matrix(~ group)
+
+# Fit a GLM using fixed dispersion value
+fit <- glmFit(dge, design, dispersion = dge$tagwise.dispersion)
+
+# Perform likelihood ratio test for the group effect (coefficient for groupUI_Flow)
+lrt <- glmLRT(fit, coef = 2)
+
+# Retrieve the results
+results <- topTags(lrt, n = Inf)
+print(results)
+
+# Save results to a CSV file
+write.csv(as.data.frame(results), file = "edgeR_results_UIStretch_vs_UIFlow.csv", row.names = TRUE)
+
+cat("edgeR analysis complete. Results saved as 'edgeR_results_UIStretch_vs_UIFlow.csv'\
+")
+
+```
+
+```{r edgeR_results_InfectedStretch_vs_InfectedFlow}
+# Load required libraries
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager", repos="https://cran.rstudio.com/", dependencies = FALSE)
+
+if (!requireNamespace("edgeR", quietly = TRUE))
+  BiocManager::install("edgeR")
+
+if (!requireNamespace("readxl", quietly = TRUE))
+  install.packages("readxl", repos="https://cran.rstudio.com/", dependencies = FALSE)
+
+library(edgeR)
+library(readxl)
+
+# Read the data from the Excel file
+excel_file <- "/Users/morganmorrow/Downloads/deseq2/Salmonella\ Chip\ 1.xlsx"
+# First, let's check what sheets are available in the Excel file
+sheet_names <- excel_sheets(excel_file)
+print(sheet_names)
+
+# Read the data from Sheet1
+data <- read_excel(excel_file, sheet = "Sheet1")
+
+# Check the structure of the data
+str(data)
+
+# Display the first few rows
+head(data)
+
+# Fix non-unique gene identifiers by making them unique
+unique_ids <- make.unique(as.character(data$ID))
+data$ID <- unique_ids
+
+# Extract count data for UI Stretch and UI Flow
+# Convert to matrix form (assuming these are in columns named exactly 'UI Stretch' and 'UI Flow')
+countData <- as.matrix(data[, c("Infected Stretch", "Infected Flow")])
+rownames(countData) <- data$ID
+
+# Create group factor for the two conditions with one sample each
+group <- factor(c("Infected Stretch", "Infected Flow"))
+
+# Create DGEList object
+dge <- DGEList(counts = countData, group = group)
+
+# Set a prior common dispersion estimate, e.g., 0.1
+prior_dispersion <- 0.1
+# Assign the dispersion to each gene (manually setting a fixed dispersion)
+dge$common.dispersion <- prior_dispersion
+dge$tagwise.dispersion <- rep(prior_dispersion, nrow(dge))
+
+# Create design matrix
+design <- model.matrix(~ group)
+
+# Fit a GLM using fixed dispersion value
+fit <- glmFit(dge, design, dispersion = dge$tagwise.dispersion)
+
+# Perform likelihood ratio test for the group effect (coefficient for groupUI_Flow)
+lrt <- glmLRT(fit, coef = 2)
+
+# Retrieve the results
+results <- topTags(lrt, n = Inf)
+print(results)
+
+# Save results to a CSV file
+write.csv(as.data.frame(results), file = "edgeR_results_InfectedStretch_vs_InfectedFlow.csv", row.names = TRUE)
+
+cat("edgeR analysis complete. Results saved as 'edgeR_results_InfectedStretch_vs_InfectedFlow.csv'\
+")
+
+
+```
+```{r UIStretch_vs_FileCount}
+# Read the 1.count file
+count_file <- "/Users/morganmorrow/Downloads/deseq2/1.count"
+count_data <- read.table(count_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)  
+
+# Check the structure of the count file
+str(count_data)
+
+# Display the first few rows
+head(count_data)
+
+# Fix the column names in the count file
+colnames(count_data) <- c("Gene", "Count")
+
+# Extract gene names without the "gene-" prefix
+count_data$Gene <- gsub("gene-", "", count_data$Gene)
+
+# Read the Excel file to get the UI Stretch data
+library(readxl)
+excel_file <- "/Users/morganmorrow/Downloads/deseq2/Salmonella\ Chip\ 1.xlsx"
+excel_data <- read_excel(excel_file, sheet = "Sheet1")
+
+# Check the structure of the Excel data
+str(excel_data)
+head(excel_data)
+
+
+# For merging purposes, ensure gene IDs are character and are consistent
+excel_data$ID <- as.character(excel_data$ID)
+
+# Merge the two datasets on gene identifier
+merged_data <- merge(excel_data, count_data, by.x = "ID", by.y = "Gene")
+
+# Check the merged data: We should see only genes common between the two sources
+print(head(merged_data))
+print(dim(merged_data))
+
+# Extract the counts for the two samples: UI Stretch from excel, and Count from file
+# Create a count matrix where rows are genes
+count_matrix <- as.matrix(merged_data[, c("UI Stretch", "Count")])
+rownames(count_matrix) <- merged_data$ID
+
+# Define groups for each sample
+# Here sample1: UI Stretch (from excel) and sample2: Count (from 1.count file)
+group <- factor(c("UI_Stretch", "FileCount"))
+
+# Create a DGEList object
+dge <- DGEList(counts = count_matrix, group = group)
+
+# Set a fixed prior dispersion estimate (e.g., 0.1)
+prior_dispersion <- 0.1
+
+dge$common.dispersion <- prior_dispersion
+# Assign fixed dispersion to each gene
+dge$tagwise.dispersion <- rep(prior_dispersion, nrow(dge))
+
+# Create design matrix for the two groups
+design <- model.matrix(~ group)
+
+# Fit the generalized linear model with fixed dispersion
+fit <- glmFit(dge, design, dispersion = dge$tagwise.dispersion)
+
+# Perform likelihood ratio test for the group effect (second coefficient)
+lrt <- glmLRT(fit, coef = 2)
+
+# Get the full results
+results <- topTags(lrt, n = Inf)
+print(results)
+
+# Save results to CSV
+write.csv(as.data.frame(results), file = "edgeR_results_UIStretch_vs_FileCount.csv", row.names = TRUE)
+
+cat("edgeR analysis complete. Results saved as 'edgeR_results_UIStretch_vs_FileCount.csv'\
+")
+
+
+```
